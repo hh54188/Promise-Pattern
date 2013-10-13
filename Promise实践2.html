@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+    <!-- 第二个简单版本，解决了一部分问题 比如可以跑出异常，捕获异常，但会出现jQuery1.5.0中的情况，即始终以第一个抛出为准-->
+</head>
+<body>
+    <div></div>
+    <script type="text/javascript">
+
+        function Promise() {
+            this.callbacks = [];
+        }
+
+        Promise.prototype = {
+            resolve: function (result) {
+                this.complete("resolve", result);
+            },
+
+            reject: function (result) {
+                var _this = this;
+                setTimeout(function () {
+                    _this.complete("reject", result);    
+                });
+            },
+
+            complete: function (type, result) {
+                while(this.callbacks[0]) {
+                    this.callbacks.shift()[type](result);
+                }
+            },
+
+            then: function (successHandler, failedHandler) {
+                this.callbacks.push({
+                    resolve: successHandler,
+                    reject: failedHandler
+                });
+
+                return this;
+            }
+        }
+
+        function delay(throwError) {
+
+            var promise = new Promise();
+
+            // 主动抛出错误
+            if (throwError) {
+
+            /*                
+                // 非常关键，promise.reject必须延迟执行，
+                // 因为reject和resolve原理是一样的，属于回调
+                // 因为此时.reject函数还没有被定义，
+                // 只有在return promise才定义
+                setTimeout(function () {
+                    promise.reject(new Error("No target!"));    
+                }, 300);
+                
+                或者换一个解决方案，把setTimeout放在底层.Promise的reject中
+            */
+                promise.reject(new Error("No target!"));
+                
+                return promise;
+            }
+
+            setTimeout(function () {
+                promise.resolve("some data");
+            }, 1000);
+
+            return promise;
+        }
+
+        delay(true).then(function (result) {
+            console.log(result);
+        }, function (error) {
+            console.error("First failedHandler catch: ", error);
+
+            var promise = new Promise();
+            promise.resolve("some data");
+            return promise;
+
+        }).then(function (result) {
+            console.log("Second successHandler recevied: ", result);
+        }, function (error) {
+            console.error("Second failedHandler catch: ", error);
+        })
+    </script>    
+</body>
+</html>

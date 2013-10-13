@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+    <!-- 
+        1.第一个简单版本，无抛出错误，无错误捕获机制 
+        2.只实现了链式
+    -->
+</head>
+<body>
+    <script type="text/javascript">
+        function Promise() {
+            this.callbacks = [];
+        }
+
+        Promise.prototype = {
+            resolve: function (result) {
+                this.complete("resolve", result);
+            },
+
+            reject: function (result) {
+                this.complete("reject", result);
+            },
+
+            complete: function (type, result) {
+                while(this.callbacks[0]) {
+                    this.callbacks.shift()[type](result);
+                }
+            },
+
+            then: function (successHandler, failedHandler) {
+                this.callbacks.push({
+                    resolve: successHandler,
+                    reject: failedHandler
+                });
+
+                return this;
+            }
+        }
+
+        function delay() {
+
+            var promise = new Promise();
+
+            setTimeout(function () {
+                promise.resolve("some data");
+            }, 1000);
+
+            return promise;
+        }
+
+        var div = document.querySelector("div");
+
+        delay().then(function (result) {
+            console.log(result);
+        }).then(function () {
+            console.log("This is the second successHandler");    
+        }).then(function () {
+            console.log("This is the third successHandler");
+        })
+        /*
+            实际上上述执行的效果相当于
+            setTimeout(function () {
+                console.log("some data");
+                console.log("This is the second successHandler");
+                console.log("This is the third successHandler");
+            }, 1000);
+        */
+    </script>    
+</body>
+</html>

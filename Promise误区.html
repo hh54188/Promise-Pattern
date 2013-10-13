@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+    <script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.5.0/jquery.min.js"></script>
+    <script type="text/javascript">
+        /*
+            早期jQuery的Promise模式中，有两个缺陷：
+            1.无法捕获异常
+            2.无法生产独立的promise
+
+            但是这两个缺陷在1.8之后的版本中得到改善（jQuery在1.5版本中引入Promise机制）
+            这里就拿1.5与1.9进行比较
+        */
+
+
+        /*  
+            验证1.无法捕获异常
+        */
+        // var step1 = function() {
+        //     console.log("------step1------");
+        //     var d = $.Deferred();
+        //     d.resolve('Some data');
+        //     return d.promise();
+        // },
+
+        // step2 = function(str) {
+        //     console.log("------step2------");
+        //     console.log("step2 recevied: ", str);
+
+        //     var d = $.Deferred();
+        //     // 故意在fulfilled hanlder中抛出异常
+        //     d.reject(new Error("This is failing!!!"));
+        //     return d.promise();
+        // },
+        
+        // step3 = function(str) {
+        //     console.log("------step3------");
+        //     console.log("step3 recevied: ", str);
+
+        //     var d = $.Deferred();
+        //     d.resolve(str + ' to display');
+        //     return d.promise();
+        // },
+        
+        // completeIt = function(str) {
+        //     console.log("------complete------");
+        //     console.log("[complete]------>", str);
+        // },
+        
+        // handleErr = function(err) {
+        //     console.log("------error------");
+        //     console.log("[errpr]------>", err);
+        // };   
+
+        // step1().
+        // then(step2).
+        // then(step3).
+        // then(completeIt, handleErr);
+
+        /*
+            1.5.0下运行的结果：
+            ------step1------
+            ------step2------
+            step2 recevied:  Some data
+            ------step3------
+            step3 recevied:  Some data
+            ------complete------
+            [complete]------> Some data
+
+            1.9.0下运行的结果：
+            ------step1------
+            ------step2------
+            step2 recevied:  Some data
+            ------error------
+            [errpr]------> Error {}             
+
+            注意在step3没有执行，因为step3本应捕获step2的抛出的错误，
+            如果我们加一个捕获错误的函数：
+
+            step1().
+            then(step2).
+            then(step3, function (str) {
+                console.log("------[error] step3------");
+                console.log("step3 revecied: ", str);
+
+                var d = $.Deferred();
+                d.resolve(str + ' to display');
+                return d.promise();    
+            }).
+            then(completeIt, handleErr);
+            在 1.9.0下的运行结果：
+            ------step1------
+            ------step2------
+            step2 recevied:  Some data
+            ------[error] step3------ 
+            step3 revecied:  Error {} 
+            ------complete------ 
+            [complete]------> Error: This is failing!!! to display 
+
+            在step3中捕获到了step2中抛出的异常，
+            同时抛出了一个新的promise，
+
+            1.5.0下运行结果：
+            ------step1------
+            ------step2------
+            step2 recevied:  Some data
+            ------step3------
+            step3 recevied:  Some data
+            ------complete------ 
+            [complete]------> Some data 
+
+        */
+
+
+        /*
+            验证：2.无法生产独立的promise
+        */
+
+        var step1 = function() {
+            console.log("------step1------");
+            var d = $.Deferred();
+            d.resolve('Some data');
+            return d.promise();
+        };
+
+        var step2 = function (result) {
+            console.log("------step2------");
+            console.log("step2 recevied: " + result);
+            var d = $.Deferred();
+            d.resolve("step2 resolve: " + result);
+            return d.promise();
+        }
+
+        var step3 = function (result) {
+            console.log("------step3------");
+            console.log("step3 recevied: " + result);
+            var d = $.Deferred();
+            d.reject(new Error("This is failing!!!"));
+            return d.promise();
+        }
+
+        var promise = step1();
+
+        var promise1 = promise.then(step2);
+        var promise2 = promise.then(step3);
+
+        /*
+            注意step2和step3的不同，在收到结果之后
+            step2做的是返回一个fulfilled状态的promise1，
+            step3则是返回一个rejected状态的promise2
+
+            ------step1------ 
+            ------step2------ 
+            step2 recevied: Some data
+            ------step3------
+            step3 recevied: Some data             
+
+            再对这两个promise执行then操作，
+        */
+
+        promise1.then(function (result) {
+            console.log("Success promise1: ", result);
+        }, function () {
+            console.log("Failed promise1: ", result);
+        })
+
+        promise2.then(function (result) {
+            console.log("Success promise2: ", result);
+        }, function (result) {
+            console.log("Failed promise2: ", result);
+        })        
+
+        /*
+            在1.9.0的理想情况下，
+            我们可以看到promise1执行的是then中的fulfilled handler
+            promise2执行的是then中的error handler
+
+            Success promise1:  step2 resolve: Some
+            Failed promise2:  Error {}
+
+            而在1.5.0的情况下，执行结果是：
+
+            Success promise1:  Some data
+            Success promise2:  Some data 
+
+        */
+
+
+    </script>
+</head>
+<body>
+</body>
+</html>

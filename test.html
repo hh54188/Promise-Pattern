@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <style type="text/css">
+        div {
+            width: 50px;
+            height: 50px;
+            background: black;
+        }
+        .animate {
+            -webkit-animation-name: animate;
+            -webkit-animation-duration: 1s;
+            -webkit-animation-timing-function: ease; 
+            -webkit-animation-delay: 0s;
+            -webkit-animation-iteration-count: 1;
+            -webkit-animation-direction: normal;
+        }
+
+        @-webkit-keyframes animate {
+            from {
+              width: 50px;
+              height: 50px;
+            }
+            to {
+              width: 100px;
+              height: 100px;
+            }
+        }
+    </style>    
+    <script type="text/javascript" src="js/animPromise.js"></script>
+
+</head>
+<body>
+<div></div>
+    <script type="text/javascript">
+        function animate(target) {
+            var promise = new Promise();
+
+            target.addEventListener("webkitAnimationStart", function () {
+                console.log("[animate start]");
+                promise.resolve("before");
+            }, false);
+
+            target.addEventListener("webkitAnimationEnd", function() {
+                console.log("[animate end]");
+                promise.resolve("after");
+            }, false);
+            
+            target.classList.add("animate")           ;
+
+            return promise;
+        }    
+
+        var div = document.querySelector("div");
+
+        animate(div)
+        .first(function () {
+            console.log(1);
+        })
+        .first(function () {
+            console.log(2);
+        })
+        .then(function () {
+            console.log(3);
+        })
+        .then(function () {
+            console.log(4);
+        })
+    </script>
+</body>
+</html>
