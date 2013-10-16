@@ -487,29 +487,90 @@ delay()
 1. 当异常被捕获之后将阻止异常往下传递
 2. 定义中描述在fulfilled之后必须返回一个新的promise，但如果没有返回新的promise，或者是返回其他的值，应该作何处理？
 
-```
-                               push
-                                |
-                                | In
-                    [successHandler, errorHandler]
-                    [successHandler, errorHandler]
-                    [successHandler, errorHandler]
-                    ...
-                    [successHandler, errorHandler]
-                                |
-                                | Out
-                              shift
-                                |
-                             execute 
-                    succussHandler or errorHandler
-                                |
-                                |
-                      ----------------------
-                      |                    |
-                    return               return
-                    promise              nothing
+对于第二点，我们暂且处理规则是：
+
+1. 如果没有返回值，那么下一个handler将继续解析上一promise
+2. 如果返回值存在，但返回值不为promise，默认调用resolve handler，并且返回值作为handler参数传入
+
+大致流程图如下所示
 
 ```
+                                push
+                                 |
+                    [successHandler, errorHandler]
+                    ...
+            ------->[successHandler, errorHandler]
+            |                    | 
+            |                  shift
+            |                    |
+            |                 execute 
+            |        succussHandler or errorHandler
+            |                    |
+            |                    |
+            |          ----------------------
+            |          |                    |
+            |        return               return
+            -------- promise              nothing
+            |                               |
+            <-------------------------------|
+
+```
+从上图中可以看出，只要promise存在，它必然执行resolve或者reject，必然导致一组handler出队。如果抛出异常，但这组handler中没有errorHandler，那么这组handler便作废，直到找到下一个能捕获异常的handler。直到队列中handler全部出队。看来我们有必要写一个“直到找到我们需要的函数”的函数：
+
+```
+...
+getCallbackByType: function (type) {
+    if (callbacks.length) {
+
+        var callback = callbacks.shift()[type];
+
+        while (!callback) {
+            callback = callbacks.shift()[type];
+        }                    
+
+    }
+
+    return callback;
+}
+...
+```
+
+从上图中可以看出所有的promise可以共用一个callbacks队列，并且考虑到需要判断返回值是否为promise类型，我们最好还需要一个标志位，做如下修改：
+
+```
+var callbacks = [];
+
+function Promise() {
+    this.isPromise = true;
+}
+...
+```
+
+根据以上描述，这类似于一个递归的过程
+
+```
+promise --> resolve/reject ---> promise ---> resolve/reject
+```
+
+我们抽象出一个递归函数：
+
+```
+...
+executeInLoop: function (promise,result) {
+
+    if ((promise && !promise.isPromise || !promise) && callbacks.length) {
+
+        var callback = this.getCallbackByType("resolve");
+
+        if (callback) {
+            var promise = callback(promise? promise: result);
+            this.executeInLoop(promise, promise? promise: result);
+        }
+    }
+},
+...
+```
+
 
 
 
