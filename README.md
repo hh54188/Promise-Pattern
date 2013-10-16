@@ -311,7 +311,7 @@ delay().then(function (result) {
 })
 ```
 
-首先我们要为每一个Promise准备一个**队列**(而不是堆栈)来存储自己的handler
+首先我们要为每一个Promise准备一个**队列**来存储自己的handler
 
 ```
 function Promise() {
@@ -331,3 +331,185 @@ Promise.prototype.then = function (successHandler, failedHandler) {
     return this;
 }
 ```
+其实resolve和reject虽然名称不同，但是都是执行各自对应的回调函数，我们可以抽象出一个公共的complete方法：
+
+```
+Promise.prototype = {
+    resolve: function (result) {
+        this.complete("resolve", result);
+    },
+
+    reject: function (result) {
+        this.complete("reject", result);
+    },
+
+    complete: function (type, result) {
+        // to do
+    }
+}
+```
+
+`complete`的工作非常显而易见，根据type不同执行回调函数出队，以`result`为参数，执行相应`type`的的函数：
+
+```
+complete: function (type, result) {
+    this.callbacks.shift()[type](result);
+}
+```
+
+但是这样只能执行队首回调函数，在链式的情况下，可能在callbacks中添加了多个回调函数，为了实现链式的执行，需要把callbacks中的回调全部出队，complete可以改进为：
+
+```
+complete: function (type, result) {
+    while(this.callbacks.length) {
+        this.callbacks.shift()[type](result);
+    }
+}
+```
+完整版如下：
+
+```
+function Promise() {
+    this.callbacks = [];
+}
+
+Promise.prototype = {
+    resolve: function (result) {
+        this.complete("resolve", result);
+    },
+
+    reject: function (result) {
+        this.complete("reject", result);
+    },
+
+    complete: function (type, result) {
+        while(this.callbacks[0]) {
+            this.callbacks.shift()[type](result);
+        }
+    },
+
+    then: function (successHandler, failedHandler) {
+        this.callbacks.push({
+            resolve: successHandler,
+            reject: failedHandler
+        });
+
+        return this;
+    }
+}
+```
+第一个版本即完成，可以看到测试上面开始例子的结果，能够顺利打印出信息。
+
+接下来我们完成处理异常部分
+
+首先我们写一个能够故意抛出异常的测试用例
+
+```
+delay(true).then(function (result) {
+    console.log(result);
+}, function firstErrorHandler(error) {
+    console.error("First failedHandler catch: ", error);
+
+    var promise = new Promise();
+    promise.resolve("some data");
+    return promise;
+
+}).then(function secondSucHandler(result) {
+    console.log("Second successHandler recevied: ", result);
+}, function (error) {
+    console.error("Second failedHandler catch: ", error);
+})
+```
+
+我们在delay中抛出异常，在`firstErrorHandler`捕获异常后，返回一个能被fulfilled的promise，并且用secondSucHandler顺利解析、
+
+如果直接用上面版本执行，会发现没有任何结果，为什么？
+
+**因为在执行`delay()`时，第一个`reject`也同时被执行，但此时`then`函数还没执行，也就是处理reject的handler还没有被定义。**当然也就不会有任何结果了。反过来也能想通，也就能说通resolve能被执行。
+
+那么我们只要在reject函数中加上一定的延时即可：
+
+```
+...
+reject: function (result) {
+    var _this = this;
+    setTimeout(function () {
+        _this.complete("reject", result);    
+    });
+},
+...
+```
+
+执行测试代码结果如下：
+
+```
+First failedHandler catch:  Error
+Second failedHandler catch:  Error
+
+```
+
+虽然错误被捕获了，但错误被一直传递一下去了，这也就是我们之前说的jQuery无法返回新呃promise，接下来要解决这个问题。
+
+我们来写一个更复杂的测试用例，来验证下面的解决方案：
+
+```
+delay()
+// ------Level 1------
+.then(function FirstSucHandler(result) {
+    console.log("First successHandler recevied: ", result);
+
+    var p = new Promise();
+    p.reject(new Error("This is a test"));
+    return p;                    
+
+}, function FirstErrorHandler(error) {
+    console.error("Second failedHandler catch: ", error);
+})
+// ------Level 2------
+.then(function SecondSucHandler(result) {
+    console.log("Second successHandler recevied: ", result);            
+})
+// ------Level 3------
+.then(function ThirdSucHandler(result) {
+    console.log("Third successHandler recevied: ", result);
+}, function ThirdErrorHandler(error) {
+    console.error("Third failedHandler catch: ", error);
+})
+// ------Level 4------
+.then(function FourSucHandler(result) {
+    console.log("Fourth successHandler recevied: ", result);
+})
+```
+
+正确的执行顺序应该是`FirstSucHandler`fulfilled之后抛出异常，略过SecondSucHandler，异常被ThirdErrorHandler捕获，并且返回一个新的promise，由FourSucHandler解析。
+
+接下来我们要修复并且考虑这些问题
+1. 当异常被捕获之后将阻止异常往下传递
+2. 定义中描述在fulfilled之后必须返回一个新的promise，但如果没有返回新的promise，或者是返回其他的值，应该作何处理？
+
+```
+                               push
+                                |
+                                | In
+                    [successHandler, errorHandler]
+                    [successHandler, errorHandler]
+                    [successHandler, errorHandler]
+                    ...
+                    [successHandler, errorHandler]
+                                |
+                                | Out
+                              shift
+                                |
+                             execute 
+                    succussHandler or errorHandler
+                                |
+                                |
+                      ----------------------
+                      |                    |
+                    return               return
+                    promise              nothing
+
+```
+
+
+
