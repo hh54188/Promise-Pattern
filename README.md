@@ -15,13 +15,13 @@ $.get("/js/script,js", function () {
 var promise = $.get("/js/script");
 ```
 
-返回值promise即代表操作的最终结果。promise也可以最为“第一类对象”（First-class object），被当做参数传递, 被聚合(aggregating)在一起等等。而避免了传统异步代码中回调函数嵌套回调函数的糟糕情况。
+返回值promise即代表操作的最终结果。返回值promise也可以作为“第一类对象”（First-class object），甚至被当做参数传递。这个模式最大的优势就是避免了传统异步操作代码中，回调函数嵌套回调函数的糟糕情况。
 
-谈到Promise，最先想到的是它的`then`关键字，的确，在Promise模式的定义中([CommonJS Promises/A](http://wiki.commonjs.org/wiki/Promises/A))中，`then`关键字的确非常重要：
+如果你之前对Promise模式有所了解的话（可以参考InfoQ之前的这篇[文章](http://www.infoq.com/cn/news/2011/09/js-promise)），谈到Promise，最先想到的一定是它的`then`函数，的确它非常重要，在Promise模式的定义中([CommonJS Promises/A](http://wiki.commonjs.org/wiki/Promises/A))中，`then`函数是这么被定义的：
 
 >A promise is defined as an object that has a function as the value for the property then: `then(fulfilledHandler, errorHandler, progressHandler)`
 
-上面的例子同样可以改写为：
+也就是说每一个promise结果一定会自带一个then函数，通过这个then函数，我们可以添加promise转变到不同状态(fulfilled或者failed)时的回调，还可以监听progress事件，拿上面的代码为例：
 
 ```
 var fulfilledHandler = function () {}
@@ -30,20 +30,20 @@ var progressHandler = function () {}
 
 $.get("/js/script").then(fulfilledHandler, errorHandler, progressHandler)
 ```
-但promise的重点并非在上面各种回调函数的聚合，**而是在于提供了一种同步函数与异步函数联系和通信的方式**
+但promise的重点并非在上述各种回调函数的聚合，**而是在于提供了一种同步函数与异步函数联系和通信的方式**。遗憾的是在实践中，人们通常对`then`的实现只是形似而非神似——只实现了then的聚合(aggregating)功能。甚至在一些著名的类库中也犯了同样的错误(下面即以jQuery举例)，不仅仅是在处理then函数上，本文即摘出promise被人们忽视的部分，作一些说明。
 
 ## Promise的误区
 
-让我们回过头来看看同步函数最重要的两个特征
+抛开Promise，让我们看看同步操作函数最重要的两个特征
 
 - 能够返回值
 - 能够抛出异常
 
-这和高等数学中的[复合函数](http://zh.wikipedia.org/wiki/%E5%A4%8D%E5%90%88%E5%87%BD%E6%95%B0)(function composition)很像，也就是说你可以将一个函数的返回值直接传递给另一个函数，并且将另一个函数的返回值再传递给其他函数……像一条“链”一样无限的这么做下去。更重要的是，如果当中的某一环节出现了异常，这个异常能够被抛出，传递出去直到被`catch`捕获。
+这其实和高等数学中的[复合函数](http://zh.wikipedia.org/wiki/%E5%A4%8D%E5%90%88%E5%87%BD%E6%95%B0)(function composition)很像：你可以将一个函数的返回值作为参数传递给另一个函数，并且将另一个函数的返回值作为参数再传递给下一个函数……像一条“链”一样无限的这么做下去。更重要的是，如果当中的某一环节出现了异常，这个异常能够被抛出，传递出去直到被`catch`捕获。
 
-而在传统的异步操作中不再会有返回值，也不再会抛出异常——或者你可以抛出，但是没有人可以捕获。这样的结果导致必须在异步操作的回调中再嵌套一系列的回调，为了获取返回值也好，为了捕获异常也好。
+而在传统的异步操作中不再会有返回值，也不再会抛出异常——或者你可以抛出，但是没有人可以捕获。这样的结果导致必须在异步操作的回调中再嵌套一系列的回调，要么获取返回值也好，要么捕获异常也好。
 
-而Promise模式恰好就是为这两个缺憾准备的，模式规定你的函数必须返回一个“promise”，它可以做两件事：
+而Promise模式恰好就是为这两个缺憾准备的，它定义了你的函数必须返回一个“promise”，它可以做两件事：
 
 - 根据某个值完成某项操作(fulfilled)
 - 抛出异常(rejected)
@@ -509,13 +509,13 @@ delay()
             |                    |
             |          ----------------------
             |          |                    |
-            |        return               return
-            -------- promise              nothing
+            |         return               return
+            ----Auto--promise         nothing or not promise
             |                               |
-            <-------------------------------|
+            <--------------- Manual --------|
 
 ```
-从上图中可以看出，只要promise存在，它必然执行resolve或者reject，必然导致一组handler出队。如果抛出异常，但这组handler中没有errorHandler，那么这组handler便作废，直到找到下一个能捕获异常的handler。直到队列中handler全部出队。看来我们有必要写一个“直到找到我们需要的函数”的函数：
+从上图中可以看出，promise模式是一个周而复始执行resolve或者reject过程，每一轮必须执行二者之一，必然导致一组handler出队。如果抛出异常，但这组handler中没有errorHandler，那么这组handler便作废，直到找到下一个能捕获异常的handler。直到队列中handler全部出队。看来我们有必要写一个“直到找到我们需要的函数”的函数：
 
 ```
 ...
@@ -551,15 +551,16 @@ function Promise() {
 ```
 promise --> resolve/reject ---> promise ---> resolve/reject
 ```
-
-我们抽象出一个递归函数：
+注意在上面Level 1的FirstSucHandler中，新返回的promise执行了reject，这会自动使队列一组回调函数出队并执行。但面对一些没有返回值的情况应该怎么办，那么就应该遵循我上面说的标准，要么执行上一个promise，要么默认执行下一个resolve：
 
 ```
 ...
 executeInLoop: function (promise,result) {
-
+    // 1.如果回调队列还没有被清空  
+    // 2.或者没有返回值，
+    // 3.或者有返回值但不是promise
     if ((promise && !promise.isPromise || !promise) && callbacks.length) {
-
+        // 默认执行resolve
         var callback = this.getCallbackByType("resolve");
 
         if (callback) {
@@ -570,6 +571,113 @@ executeInLoop: function (promise,result) {
 },
 ...
 ```
+最后`Complete`函数也要做相应修改：
+
+```
+...
+complete: function (type, result) {
+
+    var callback = this.getCallbackByType(type);
+
+    if (callback) {
+        var promise = callback(result);    
+        this.executeInLoop(promise, promise? promise: result);
+    }
+},
+...
+```
+
+最后贴上完整版代码：
+
+```
+var callbacks = [];
+
+function Promise() {
+    this.isPromise = true;
+}
+
+Promise.prototype = {
+    resolve: function (result) {
+        this.complete("resolve", result);
+
+    },
+
+    reject: function (result) {
+        var _this = this;
+        setTimeout(function () {
+            _this.complete("reject", result);    
+        });
+    },
+
+    executeInLoop: function (promise,result) {
+        // 如果队列里还有函数 并且（ 要么 没有返回一个值 或者 （有返回值但不是promise类型））
+        if ((promise && !promise.isPromise || !promise) && callbacks.length) {
+
+            var callback = this.getCallbackByType("resolve");
+
+            if (callback) {
+                var promise = callback(promise? promise: result);
+                this.executeInLoop(promise, promise? promise: result);
+            }
+        }
+    },
+
+    getCallbackByType: function (type) {
+        if (callbacks.length) {
+
+            var callback = callbacks.shift()[type];
+
+            while (!callback) {
+                callback = callbacks.shift()[type];
+            }                    
+
+        }
+
+        return callback;
+    },
+
+    complete: function (type, result) {
+
+        var callback = this.getCallbackByType(type);
+
+        if (callback) {
+            var promise = callback(result);    
+            /*
+                1. 有返回值，promise类型
+                2. 有返回值，其他类型
+                3. 无返回值
+            */
+            this.executeInLoop(promise, promise? promise: result);
+        }
+    },
+
+    then: function (successHandler, failedHandler) {
+        callbacks.push({
+            resolve: successHandler,
+            reject: failedHandler
+        });
+
+        return this;
+    }
+}
+```
+并附上执行结果：
+
+```
+First successHandler recevied:  some data 
+Third failedHandler catch:  Error {} 
+Fourth successHandler recevied:  Error {} 
+```
+
+参考文献
+
+- [Promises/A+ - understanding the spec through implementation](http://modernjavascript.blogspot.com/2013/08/promisesa-understanding-by-doing.html)
+- [Promise patterns](http://modernjavascript.blogspot.hk/2013/09/promise-patterns.html)
+- [You're Missing the Point of Promises](https://gist.github.com/domenic/3889970)
+- [Creating Responsive Applications Using jQuery Deferred and Promises](http://msdn.microsoft.com/en-us/magazine/gg723713.aspx)
+- [Asynchronous Programming in JavaScript with “Promises”](http://blogs.msdn.com/b/ie/archive/2011/09/11/asynchronous-programming-in-javascript-with-promises.aspx)
+- [Promise & Deferred objects in JavaScript Pt.1: Theory and Semantics.](http://blog.mediumequalsmessage.com/promise-deferred-objects-in-javascript-pt1-theory-and-semantics)
+- [tiny Promise.js](https://gist.github.com/unscriptable/814052)
 
 
 

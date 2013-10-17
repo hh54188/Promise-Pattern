@@ -25,7 +25,7 @@
             },
 
             executeInLoop: function (promise,result) {
-
+                // 如果队列里还有函数 并且（ 要么 没有返回一个值 或者 （有返回值但不是promise类型））
                 if ((promise && !promise.isPromise || !promise) && callbacks.length) {
 
                     var callback = this.getCallbackByType("resolve");
@@ -57,6 +57,11 @@
 
                 if (callback) {
                     var promise = callback(result);    
+                    /*
+                        1. 有返回值，promise类型
+                        2. 有返回值，其他类型
+                        3. 无返回值
+                    */
                     this.executeInLoop(promise, promise? promise: result);
                 }
             },
@@ -82,13 +87,14 @@
             }
 
             setTimeout(function () {
-                promise.resolve("some data");    
+                promise.resolve("some data");
             }, 1000);
 
             return promise;
         }
 
         delay()
+        // ------Level 1------
         .then(function (result) {
             console.log("First successHandler recevied: ", result);
 
@@ -99,20 +105,21 @@
         }, function (error) {
             console.error("Second failedHandler catch: ", error);
         })
+        // ------Level 2------
         .then(function (result) {
             console.log("Second successHandler recevied: ", result);            
         })
+        // ------Level 3------
         .then(function (result) {
             console.log("Third successHandler recevied: ", result);
         }, function (error) {
             console.error("Third failedHandler catch: ", error);
-        }).then(function (result) {
+        })
+        // ------Level 4------
+        .then(function (result) {
             console.log("Fourth successHandler recevied: ", result);
         })
-
-        // var p = new Promise();
-        // p.reject(new Error("This is a test"));
-        // return p;        
+  
     </script>    
 </body>
 </html>
