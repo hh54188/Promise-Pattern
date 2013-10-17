@@ -43,16 +43,16 @@ $.get("/js/script").then(fulfilledHandler, errorHandler, progressHandler)
 
 而在传统的异步操作中不再会有返回值，也不再会抛出异常——或者你可以抛出，但是没有人可以捕获。这样的结果导致必须在异步操作的回调中再嵌套一系列的回调，要么获取返回值也好，要么捕获异常也好。
 
-而Promise模式恰好就是为这两个缺憾准备的，它定义了你的函数必须返回一个“promise”，它可以做两件事：
+而Promise模式恰好就是为这两个缺憾准备的，它能够实现函数的复合与异常的抛出冒泡（直到被捕获）。符合Promise模式的函数必须返回一个promise，它可以：
 
-- 根据某个值完成某项操作(fulfilled)
-- 抛出异常(rejected)
+- 正确解析(fulfilled)某个值，
+- 拒绝执行(rejected)，抛出异常
 
-一个被fulfilled执行过后的结果(fulfillment)，是可以作为另一个函数参数，而由rejected抛出的异常也是可以被函数的捕获的，比如看下面这个Promise的例子：
+一个fulfilled执行过后的结果(fulfillment)，是可以作为另一个函数参数，而由rejected抛出的异常可以被捕获，比如看下面这个Promise的例子：
 
 ```
 $.get("/user/784533") // promise return
-.then(function (info) {
+.then(function parseHandler(info) {
     var userInfo = parseData(JSON.parse(info));
     return resolve(userInfo); // promise return
 })
@@ -64,6 +64,8 @@ $.get("/user/784533") // promise return
 })
 
 ```
+上面的例子中，`$.get`返回了一个promise，经过parseHandler解析之后，返回结果userInfo继续被函数`getCreditInfo`解析，而getCreditInfo必然也返回一个promise，它由successHandler解析。
+
 上面的例子中`$.get().then()`返回的结果直接传入了`getCreditInfo`函数中，而getCreditInfo执行的结果又可以作为`result`传入`successHandler`中。即使上面任何一个过程发生了异常，也都能够被最后一个errorHandler捕获。
 
 
