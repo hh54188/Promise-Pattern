@@ -1,7 +1,7 @@
 #谈Promise/A模式误区以及实践
 
 ## 什么是Promise
-Promise是一种让异步代码书写起来更优雅的模式，更准确的说能够让异步代码像同步代码那样书写并且阅读，比如下面这个异步请求的例子：
+Promise是一种让异步代码书写起来更优雅的模式，能够让异步操作代码像同步代码那样书写并且阅读，比如下面这个异步请求的例子：
 
 ```
 $.get("/js/script,js", function () {
@@ -15,7 +15,7 @@ $.get("/js/script,js", function () {
 var promise = $.get("/js/script");
 ```
 
-返回值promise即代表操作的最终结果。返回值promise也可以作为“第一类对象”（First-class object），甚至被当做参数传递。这个模式最大的优势就是避免了传统异步操作代码中，回调函数嵌套回调函数的糟糕情况。
+返回值promise即代表操作的最终结果。返回值promise也可以作为“第一类对象”（[First-class object](http://en.wikipedia.org/wiki/First-class_citizen)）被当做参数传递。这个模式最大的优势就是避免了传统异步操作代码中，回调函数嵌套回调函数的糟糕情况。
 
 如果你之前对Promise模式有所了解的话（可以参考InfoQ之前的这篇[文章](http://www.infoq.com/cn/news/2011/09/js-promise)），谈到Promise，最先想到的一定是它的`then`函数，的确它非常重要，在Promise模式的定义中([CommonJS Promises/A](http://wiki.commonjs.org/wiki/Promises/A))中，`then`函数是这么被定义的：
 
@@ -30,9 +30,19 @@ var progressHandler = function () {}
 
 $.get("/js/script").then(fulfilledHandler, errorHandler, progressHandler)
 ```
-但promise的重点并非在上述各种回调函数的聚合，**而是在于提供了一种同步函数与异步函数联系和通信的方式**。遗憾的是在实践中，人们通常对`then`的实现只是形似而非神似——只实现了then的聚合(aggregating)功能。甚至在一些著名的类库中也犯了同样的错误(下面即以jQuery举例)，不仅仅是在处理then函数上，本文即摘出promise被人们忽视的部分，作一些说明。
 
-## Promise的误区
+这有一些类似于
+
+```
+$.ajax({
+    error: errorHandler,
+    success: fulfilledHandler,
+    progress: progressHandler
+})
+```
+这个时候你会感到疑惑了，上面两种方式看上去不是几乎一模一样吗？——但promise的重点并非在上述各种回调函数的聚合，**而是在于提供了一种同步函数与异步函数联系和通信的方式**。之所以感到相似这也是大部分人对Promise的理解存在的误区，只停留在then的聚合(aggregating)功能。甚至在一些著名的类库中也犯了同样的错误(下面即以jQuery举例)。下面通过列举两个常见的误区，来让人们对Promise有一个完整的认识。
+
+## 捕获异常
 
 抛开Promise，让我们看看同步操作函数最重要的两个特征
 
@@ -41,14 +51,14 @@ $.get("/js/script").then(fulfilledHandler, errorHandler, progressHandler)
 
 这其实和高等数学中的[复合函数](http://zh.wikipedia.org/wiki/%E5%A4%8D%E5%90%88%E5%87%BD%E6%95%B0)(function composition)很像：你可以将一个函数的返回值作为参数传递给另一个函数，并且将另一个函数的返回值作为参数再传递给下一个函数……像一条“链”一样无限的这么做下去。更重要的是，如果当中的某一环节出现了异常，这个异常能够被抛出，传递出去直到被`catch`捕获。
 
-而在传统的异步操作中不再会有返回值，也不再会抛出异常——或者你可以抛出，但是没有人可以捕获。这样的结果导致必须在异步操作的回调中再嵌套一系列的回调，要么获取返回值也好，要么捕获异常也好。
+而在传统的异步操作中不再会有返回值，也不再会抛出异常——或者你可以抛出，但是没有人可以及时捕获。这样的结果导致必须在异步操作的回调中再嵌套一系列的回调，以防止意外情况的发生。
 
 而Promise模式恰好就是为这两个缺憾准备的，它能够实现函数的复合与异常的抛出冒泡（直到被捕获）。符合Promise模式的函数必须返回一个promise，它可以：
 
-- 正确解析(fulfilled)某个值，
-- 拒绝执行(rejected)，抛出异常
+- 正确解析(fulfilled)某个值，一个fulfilled执行过后的结果(fulfillments)可以作为另一个函数参数
+- 拒绝执行(rejected)，抛出可以被捕获的异常
 
-一个fulfilled执行过后的结果(fulfillment)，是可以作为另一个函数参数，而由rejected抛出的异常可以被捕获，比如看下面这个Promise的例子：
+比如看下面这个Promise的例子：
 
 ```
 $.get("/user/784533") // promise return
@@ -64,12 +74,11 @@ $.get("/user/784533") // promise return
 })
 
 ```
-上面的例子中，`$.get`返回了一个promise，经过parseHandler解析之后，返回结果userInfo继续被函数`getCreditInfo`解析，而getCreditInfo必然也返回一个promise，它由successHandler解析。
+上面的例子中，`$.get`与`getCreditInfo`都为异步操作，但在Promise模式下，（形式上）转化为了链式的顺序操作
 
-上面的例子中`$.get().then()`返回的结果直接传入了`getCreditInfo`函数中，而getCreditInfo执行的结果又可以作为`result`传入`successHandler`中。即使上面任何一个过程发生了异常，也都能够被最后一个errorHandler捕获。
+`$.get`返回的promise由`parseHandler`进行解析，并且结果作为参数传入handler中，之后的操作也是同样原理，parseHandler返回的promise被getCreditHandler。
 
-
-我们可以把它改写为同步函数的形式：注释中Blocking语句即为原异步操作，这样以来函数复合便一目了然了
+我们完全可以把它改写为同步函数的形式，这样以来函数复合便一目了然：
 ```
 try {
     var info = $.get("/user/784533"); //Blocking
@@ -84,8 +93,7 @@ try {
 }
 ```
 
-
-但是在某些类库，甚至在jQuery之前的版本中，往往忽略了对异常的捕获，就拿jQuery1.5.0来说（jQuery在1.5.0版本中引入Promise，在1.8.0开始得到修正）：
+让我们来看一个实际的例子，在jQuery1.8.0版本之前，拿jQuery1.5.0来说（jQuery在1.5.0版本中引入Promise，在1.8.0开始得到修正），存在这个无法捕获异常的问题：
 
 ```
 /*  
