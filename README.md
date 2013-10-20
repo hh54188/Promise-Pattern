@@ -93,12 +93,9 @@ try {
 }
 ```
 
-让我们来看一个实际的例子，在jQuery1.8.0版本之前，拿jQuery1.5.0来说（jQuery在1.5.0版本中引入Promise，在1.8.0开始得到修正），存在这个无法捕获异常的问题：
+让我们来看一个实际的例子，在jQuery1.8.0版本之前，比如jQuery1.5.0（jQuery在1.5.0版本中引入Promise，在1.8.0开始得到修正），存在这个无法捕获异常的问题：
 
 ```
-/*  
-    无法捕获异常        
-*/
 var step1 = function() {
     console.log("------step1------");
     var d = $.Deferred();
