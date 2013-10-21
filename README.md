@@ -1,4 +1,4 @@
-#谈Promise/A模式误区以及实践
+#Promise/A的误区以及实践
 
 ## 什么是Promise
 Promise是一种让异步代码书写起来更优雅的模式，能够让异步操作代码像同步代码那样书写并且阅读，比如下面这个异步请求的例子：
@@ -21,7 +21,7 @@ var promise = $.get("/js/script");
 
 >A promise is defined as an object that has a function as the value for the property then: `then(fulfilledHandler, errorHandler, progressHandler)`
 
-也就是说每一个promise结果一定会自带一个then函数，通过这个then函数，我们可以添加promise转变到不同状态(fulfilled或者failed)时的回调，还可以监听progress事件，拿上面的代码为例：
+也就是说每一个promise结果一定会自带一个then函数，通过这个then函数，我们可以添加promise转变到不同状态(定义中promise只有三种转台，unfulfilled, fulfilled, failed.这里说的状态转变即从unfulfilled至fulfilled，或者从unfulfilled至failed)时的回调，还可以监听progress事件，拿上面的代码为例：
 
 ```
 var fulfilledHandler = function () {}
@@ -42,7 +42,7 @@ $.ajax({
 ```
 这个时候你会感到疑惑了，上面两种方式看上去不是几乎一模一样吗？——但promise的重点并非在上述各种回调函数的聚合，**而是在于提供了一种同步函数与异步函数联系和通信的方式**。之所以感到相似这也是大部分人对Promise的理解存在的误区，只停留在then的聚合(aggregating)功能。甚至在一些著名的类库中也犯了同样的错误(下面即以jQuery举例)。下面通过列举两个常见的误区，来让人们对Promise有一个完整的认识。
 
-## 捕获异常
+## Promise/A模式与同步模式有什么联系？
 
 抛开Promise，让我们看看同步操作函数最重要的两个特征
 
@@ -53,12 +53,7 @@ $.ajax({
 
 而在传统的异步操作中不再会有返回值，也不再会抛出异常——或者你可以抛出，但是没有人可以及时捕获。这样的结果导致必须在异步操作的回调中再嵌套一系列的回调，以防止意外情况的发生。
 
-而Promise模式恰好就是为这两个缺憾准备的，它能够实现函数的复合与异常的抛出冒泡（直到被捕获）。符合Promise模式的函数必须返回一个promise，它可以：
-
-- 正确解析(fulfilled)某个值，一个fulfilled执行过后的结果(fulfillments)可以作为另一个函数参数
-- 拒绝执行(rejected)，抛出可以被捕获的异常
-
-比如看下面这个Promise的例子：
+而Promise模式恰好就是为这两个缺憾准备的，它能够实现函数的复合与异常的抛出（冒泡直到被捕获）。符合Promise模式的函数必须返回一个promise，无论它是fulfilled状态也好，还是failed(rejected)状态也好，我们都可以把它当做同步操作函数中的一个返回值：
 
 ```
 $.get("/user/784533") // promise return
@@ -76,9 +71,9 @@ $.get("/user/784533") // promise return
 ```
 上面的例子中，`$.get`与`getCreditInfo`都为异步操作，但在Promise模式下，（形式上）转化为了链式的顺序操作
 
-`$.get`返回的promise由`parseHandler`进行解析，并且结果作为参数传入handler中，之后的操作也是同样原理，parseHandler返回的promise被getCreditHandler。
+`$.get`返回的promise由`parseHandler`进行解析，返回值“传入”getCreditInfo中，而getCreditInfo的返回值同时“传入”successHandler中。
 
-我们完全可以把它改写为同步函数的形式，这样以来函数复合便一目了然：
+之所以要在传入二字上注上引号，因为并非真正把promise当做值传递进入函数中，但我们完全可以把它理解为传入，并且改写为同步函数的形式，这样以来函数复合便一目了然：
 ```
 try {
     var info = $.get("/user/784533"); //Blocking
@@ -93,7 +88,7 @@ try {
 }
 ```
 
-让我们来看一个实际的例子，在jQuery1.8.0版本之前，比如jQuery1.5.0（jQuery在1.5.0版本中引入Promise，在1.8.0开始得到修正），存在这个无法捕获异常的问题：
+但是在jQuery1.8.0版本之前，比如jQuery1.5.0（jQuery在1.5.0版本中引入Promise，在1.8.0开始得到修正），存在无法捕获异常的问题：
 
 ```
 var step1 = function() {
@@ -153,7 +148,7 @@ step3 recevied:  Some data
 
 忽略捕获异常的错误，上面的结果还反映出另一个问题，最后一步completeHandler中处理的值应该是由step3中决定的，也就是step3中的` d.resolve(str + ' to display');`，最后应打印出的结果为`some data to display`。
 
-在[jQuery-1.9.0](http://ajax.googleapis.com/ajax/libs/jquery/1.5.0/jquery.min.js)中是可以捕获的，运行结果为：
+而在[jQuery-1.9.0](http://ajax.googleapis.com/ajax/libs/jquery/1.5.0/jquery.min.js)中异常是可以捕获的，运行结果为：
 
 ```
 ------step1------
@@ -162,8 +157,9 @@ step2 recevied:  Some data
 ------error------
 [error]------> Error {}  
 ```
+但是打印出的结果仍然有问题
 
-注意到step3没有执行，因为step3中只有应对fulfilled的情况，所以也就什么都不做了，只有在最后error才被捕获。
+注意到step3没有执行，因为step3中只定义了fulfilled的回调，异常只有在最后errorhandler才被捕获。
 
 其实我们可以试试，在step3中添加处理异常的handler：
 
@@ -192,9 +188,10 @@ step3 revecied:  Error {}
 [complete]------> Error: This is failing!!! to display 
 ```
 
-虽然错误在step3被捕获了，但是由于我们将错误信息传递了下去，最后一步打印出的仍然是错误消息
+虽然错误在step3被捕获了，但是由于我们将错误信息传递了下去，最后一步打印出的仍然是error消息
 
 
+## 细节：返回Promise
 
 让我们继续看看Promise/A定义的第二段：
 
@@ -236,11 +233,11 @@ var promise = step1();
 var promise1 = promise.then(step2);
 var promise2 = promise.then(step3);
 ```
-step1返回的promise是要会被正确fulfilled的，但不同的是step2 fulfilled之后，返回一个仍然可被解析的promise，而step3则抛出一个异常。
+step1返回的promise是fulfilled状态，但不同的是step2 fulfilled之后，返回一个仍然可被解析的promise(1)，而step3则抛出一个异常(promise2)。
 
-上面这段代码为了验证promise的第二段定义，即无论是被正确解析还是抛出异常，返回的都应该是一个独立的promise。
+按照定义所说，promise1与promise2是相互不同的promise，无论是被正确解析还是抛出异常，返回的都应该是一个独立的promise。
 
-为了验证产生的是否为独立的promise，只需看他们的执行结果如何，接着给promise1和promise2定义处理函数：
+为了验证产生的是否为独立的promise，只需看他们的执行结果如何，接着给promise1和promise2定义fulfilled和failed回调函数：
 
 ```
 promise1.then(function (result) {
@@ -262,6 +259,7 @@ promise2.then(function (result) {
 Success promise1:  Some data
 Success promise2:  Some data 
 ```
+promise2虽然是一个被抛出的异常，但仍然可以被正确解析，并且解析使用的参数是上一个promise的返回值
 
 在jQuery-1.9.0中：
 
@@ -270,11 +268,13 @@ Success promise1:  step2 resolve: Some
 Failed promise2:  Error {}
 ```
 
+能被正常解析。
+
 ## 实践
 
-接下来我们简单用代码实现一个Promise模式。
+完整认识了promise之后，我们可以用简单的代码实现一个Promise模式。
 
-参照jQuery的`Deferred`模式，我们可以了解Promise的大致结构：
+参照jQuery的`Deferred`，我们可以了解Promise的大致结构：
 
 ```
 var Promise = function () {}
@@ -338,7 +338,7 @@ Promise.prototype.then = function (successHandler, failedHandler) {
     return this;
 }
 ```
-其实resolve和reject虽然名称不同，但是都是执行各自对应的回调函数，我们可以抽象出一个公共的complete方法：
+其实resolve和reject虽然名称不同，但是都是执行各自对应的回调函数，于是可以抽象出一个公共的complete方法：
 
 ```
 Promise.prototype = {
@@ -407,7 +407,7 @@ Promise.prototype = {
 ```
 第一个版本即完成，可以看到测试上面开始例子的结果，能够顺利打印出信息。
 
-接下来我们完成处理异常部分
+接下来我们来完成处理异常部分
 
 首先我们写一个能够故意抛出异常的测试用例
 
@@ -428,7 +428,7 @@ delay(true).then(function (result) {
 })
 ```
 
-我们在delay中抛出异常，在`firstErrorHandler`捕获异常后，返回一个能被fulfilled的promise，并且用secondSucHandler顺利解析、
+我们在delay中抛出异常，希望在`firstErrorHandler`捕获异常后，返回一个能fulfilled的promise，并且用secondSucHandler顺利解析、
 
 如果直接用上面版本执行，会发现没有任何结果，为什么？
 
@@ -455,7 +455,7 @@ Second failedHandler catch:  Error
 
 ```
 
-虽然错误被捕获了，但错误被一直传递一下去了，这也就是我们之前说的jQuery无法返回新呃promise，接下来要解决这个问题。
+虽然错误被捕获了，但错误被一直传递一下去了，这也就是我们之前说的jQuery无法返回新的promise，接下来要解决这个问题。
 
 我们来写一个更复杂的测试用例，来验证下面的解决方案：
 
@@ -490,7 +490,7 @@ delay()
 
 正确的执行顺序应该是`FirstSucHandler`fulfilled之后抛出异常，略过SecondSucHandler，异常被ThirdErrorHandler捕获，并且返回一个新的promise，由FourSucHandler解析。
 
-接下来我们要修复并且考虑这些问题
+接下来还要修复并且考虑这些问题
 1. 当异常被捕获之后将阻止异常往下传递
 2. 定义中描述在fulfilled之后必须返回一个新的promise，但如果没有返回新的promise，或者是返回其他的值，应该作何处理？
 
